@@ -17,28 +17,23 @@ jobs:
         id: extract_username
         run: |
           # Extract username from issue body
-          # Try multiple patterns to match different formats
+          # The template format is: "### GitHub Username\n\nusername"
           BODY="${{ github.event.issue.body }}"
           
-          # Pattern 1: YAML form format "github_username: username"
-          USERNAME=$(echo "$BODY" | grep -oP '(?<=github_username:\s*)\S+' | head -1 | tr -d '"' | tr -d "'")
+          # Pattern 1: Look for username after "### GitHub Username" heading (most common)
+          USERNAME=$(echo "$BODY" | grep -A 2 "### GitHub Username" | grep -v "### GitHub Username" | grep -v "^$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
           
-          # Pattern 2: "GitHub Username: username"
+          # Pattern 2: Look for username after "GitHub Username" (any format)
           if [ -z "$USERNAME" ]; then
-            USERNAME=$(echo "$BODY" | grep -oP '(?<=GitHub Username:\s*)\S+' | head -1)
+            USERNAME=$(echo "$BODY" | grep -A 2 "GitHub Username" | grep -v "GitHub Username" | grep -v "^$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
           fi
           
-          # Pattern 3: Markdown format "**GitHub Username**: username"
+          # Pattern 3: Try to find github_username field (YAML format)
           if [ -z "$USERNAME" ]; then
-            USERNAME=$(echo "$BODY" | grep -oP '(?<=\*\*GitHub Username\*\*[:\s]*)\S+' | head -1)
+            USERNAME=$(echo "$BODY" | grep -i "github_username" | sed 's/.*github_username[^:]*:\s*//i' | sed 's/[[:space:]]*$//' | head -1)
           fi
           
-          # Pattern 4: Look for username after "GitHub Username" field
-          if [ -z "$USERNAME" ]; then
-            USERNAME=$(echo "$BODY" | grep -A 1 "GitHub Username" | tail -1 | sed 's/^[[:space:]]*//' | head -1)
-          fi
-          
-          # Clean up username (remove any markdown, quotes, or extra characters)
+          # Clean up username (remove any markdown, quotes, or extra characters, but keep alphanumeric and hyphens)
           USERNAME=$(echo "$USERNAME" | sed 's/[^a-zA-Z0-9-]//g' | head -1)
           
           echo "username=$USERNAME" >> $GITHUB_OUTPUT
