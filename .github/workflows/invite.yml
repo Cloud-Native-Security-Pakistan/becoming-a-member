@@ -59,20 +59,14 @@ jobs:
             console.log(`Inviting ${username} to ${orgName}...`);
             
             try {
-              // Invite user to organization
-              const response = await github.rest.orgs.createInvitation({
-                org: orgName,
-                invitee_id: null, // We'll use username instead
-                role: 'direct_member', // Options: 'direct_member' or 'admin'
-                team_ids: [] // Add team IDs if you want to add to specific teams
-              });
-              
-              // Alternative: Use the users API to get user ID first, then invite
-              // This is more reliable
+              // Get user ID first (required for invitation)
               const user = await github.rest.users.getByUsername({
                 username: username
               });
               
+              console.log(`Found user ${username} with ID ${user.data.id}`);
+              
+           
               const inviteResponse = await github.rest.orgs.createInvitation({
                 org: orgName,
                 invitee_id: user.data.id,
@@ -86,13 +80,18 @@ jobs:
               console.error(`Error inviting ${username}:`, error.message);
               
               // Check if user is already a member
-              if (error.status === 422 && error.message.includes('already a member')) {
+              if (error.status === 422 && (error.message.includes('already a member') || error.message.includes('User is already a member'))) {
                 return { success: true, message: `${username} is already a member` };
               }
               
               // Check if invitation already exists
-              if (error.status === 422 && error.message.includes('invitation already exists')) {
+              if (error.status === 422 && (error.message.includes('invitation already exists') || error.message.includes('Invitation already exists'))) {
                 return { success: true, message: `Invitation already sent to ${username}` };
+              }
+              
+              // Check for permission errors
+              if (error.status === 403) {
+                throw new Error(`Permission denied: Token needs 'admin:org' scope. Current token has: ${error.response?.headers['x-oauth-scopes'] || 'unknown'}. Please update your ORG_INVITE_TOKEN with a token that has 'admin:org' permission.`);
               }
               
               throw error;
