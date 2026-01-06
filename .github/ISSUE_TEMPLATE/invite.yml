@@ -1,0 +1,39 @@
+name: Request Invitation
+description: Request an invitation to join the Cloud Native Security Pakistan (CNSP) organization
+title: "[INVITE REQUEST] "
+labels: ["invite-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your interest in joining Cloud Native Security Pakistan (CNSP)!
+        
+        Please fill out the form below to request an invitation. Our automated workflow will process your request and send you an invitation shortly.
+
+  - type: input
+    id: github_username
+    attributes:
+      label: GitHub Username
+      description: Your GitHub username (without @)
+      placeholder: "e.g., johndoe"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why do you want to join CNSP?
+      description: Tell us about your interest in cloud-native security, CNCF projects, or open source adoption
+      placeholder: "I'm interested in learning about Kubernetes security, contributing to open source security tools, and adopting CNCF best practices..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Agreement
+      description: By submitting this request, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow the CNSP Code of Conduct
+          required: true
+

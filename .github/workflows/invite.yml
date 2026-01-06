@@ -1,0 +1,146 @@
+name: Auto Invite to Organization
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  invite:
+    # Only run if the issue uses the invite template
+    if: contains(github.event.issue.labels.*.name, 'invite-request')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      organization: write
+    steps:
+      - name: Extract GitHub Username
+        id: extract_username
+        run: |
+          # Extract username from issue body
+          # The issue template format: "GitHub Username: username"
+          USERNAME=$(echo "${{ github.event.issue.body }}" | grep -oP '(?<=GitHub Username:\s)\S+' | head -1)
+          
+          # Fallback: try to extract from markdown format
+          if [ -z "$USERNAME" ]; then
+            USERNAME=$(echo "${{ github.event.issue.body }}" | grep -oP '(?<=\*\*GitHub Username\*\*[:\s]*)\S+' | head -1)
+          fi
+          
+          # Clean up username (remove any markdown or extra characters)
+          USERNAME=$(echo "$USERNAME" | sed 's/[^a-zA-Z0-9-]//g')
+          
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "Extracted username: $USERNAME"
+          
+          if [ -z "$USERNAME" ]; then
+            echo "Error: Could not extract username from issue body"
+            exit 1
+          fi
+
+      - name: Invite User to Organization
+        id: invite_user
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORG_INVITE_TOKEN }}
+          script: |
+            const username = '${{ steps.extract_username.outputs.username }}';
+            const orgName = 'Cloud-Native-Security-Pakistan'; // TODO: Replace with your actual organization name
+            
+            console.log(`Inviting ${username} to ${orgName}...`);
+            
+            try {
+              // Invite user to organization
+              const response = await github.rest.orgs.createInvitation({
+                org: orgName,
+                invitee_id: null, // We'll use username instead
+                role: 'direct_member', // Options: 'direct_member' or 'admin'
+                team_ids: [] // Add team IDs if you want to add to specific teams
+              });
+              
+              // Alternative: Use the users API to get user ID first, then invite
+              // This is more reliable
+              const user = await github.rest.users.getByUsername({
+                username: username
+              });
+              
+              const inviteResponse = await github.rest.orgs.createInvitation({
+                org: orgName,
+                invitee_id: user.data.id,
+                role: 'direct_member'
+              });
+              
+              console.log(`Successfully invited ${username} to ${orgName}`);
+              return { success: true, message: `Invitation sent to ${username}` };
+              
+            } catch (error) {
+              console.error(`Error inviting ${username}:`, error.message);
+              
+              // Check if user is already a member
+              if (error.status === 422 && error.message.includes('already a member')) {
+                return { success: true, message: `${username} is already a member` };
+              }
+              
+              // Check if invitation already exists
+              if (error.status === 422 && error.message.includes('invitation already exists')) {
+                return { success: true, message: `Invitation already sent to ${username}` };
+              }
+              
+              throw error;
+            }
+
+      - name: Post Welcome Comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const username = '${{ steps.extract_username.outputs.username }}';
+            const issueNumber = context.payload.issue.number;
+            const issueAuthor = context.payload.issue.user.login;
+            
+            const comment = `## 🎉 Welcome to CNSP, @${username}!
+            
+            Your invitation to join **Cloud Native Security Pakistan (CNSP)** has been sent! 
+            
+            ### Next Steps:
+            1. **Check your email** - You should receive an invitation email from GitHub
+            2. **Accept the invitation** - Click the link in the email or check your [GitHub notifications](https://github.com/notifications)
+            3. **Explore our projects** - Once you're a member, check out our labs and open source projects:
+               - [Lab: Kubernetes Security Fundamentals](https://github.com/Cloud-Native-Security-Pakistan/lab-kubernetes-security) (Coming Soon) - Using Falco, OPA, and other CNCF security projects
+               - [Lab: Observability & Security](https://github.com/Cloud-Native-Security-Pakistan/lab-observability-security) (Coming Soon) - Prometheus, Grafana, and security monitoring
+               - [Lab: Policy as Code](https://github.com/Cloud-Native-Security-Pakistan/lab-policy-as-code) (Coming Soon) - Open Policy Agent (OPA) and Gatekeeper
+               - [Open Source Security Tools](https://github.com/Cloud-Native-Security-Pakistan/opensource-security-tools) (Coming Soon) - Contributing to and adopting open source security solutions
+            
+            ### CNCF Resources
+            - [CNCF Security Technical Advisory Group](https://github.com/cncf/tag-security)
+            - [CNCF Projects](https://www.cncf.io/projects/)
+            - [CNCF Security Best Practices](https://www.cncf.io/blog/category/security/)
+            
+            ### Need Help?
+            If you don't receive the invitation within a few minutes, please let us know by commenting on this issue.
+            
+            Welcome aboard! 🚀
+            `;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: comment
+            });
+            
+            console.log(`Posted welcome comment on issue #${issueNumber}`);
+
+      - name: Close Issue
+        if: steps.invite_user.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              state: 'closed'
+            });
+            
+            console.log(`Closed issue #${context.payload.issue.number}`);
+
