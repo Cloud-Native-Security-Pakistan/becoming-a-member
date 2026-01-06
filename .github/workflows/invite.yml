@@ -46,6 +46,38 @@ jobs:
             exit 1
           fi
 
+      - name: Get Team ID (if team name is provided)
+        id: get_team_id
+        if: steps.extract_username.outcome == 'success' && secrets.DEFAULT_TEAM_NAME != ''
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.ORG_INVITE_TOKEN }}
+          script: |
+            const core = require('@actions/core');
+            const orgName = 'Cloud-Native-Security-Pakistan';
+            const teamName = '${{ secrets.DEFAULT_TEAM_NAME }}';
+            
+            try {
+              // Get all teams in the organization
+              const teams = await github.paginate(github.rest.teams.list, {
+                org: orgName
+              });
+              
+              // Find team by name (case-insensitive)
+              const team = teams.find(t => t.name.toLowerCase() === teamName.toLowerCase() || t.slug.toLowerCase() === teamName.toLowerCase());
+              
+              if (team) {
+                console.log(`Found team "${teamName}" with ID: ${team.id}`);
+                core.setOutput('team_id', team.id.toString());
+              } else {
+                console.log(`Team "${teamName}" not found. Available teams: ${teams.map(t => t.name).join(', ')}`);
+                core.setOutput('team_id', '');
+              }
+            } catch (error) {
+              console.log(`Could not fetch teams: ${error.message}`);
+              core.setOutput('team_id', '');
+            }
+
       - name: Invite User to Organization
         id: invite_user
         if: steps.extract_username.outcome == 'success'
@@ -56,7 +88,45 @@ jobs:
             const username = '${{ steps.extract_username.outputs.username }}';
             const orgName = 'Cloud-Native-Security-Pakistan';
             
+            // Get team ID from secret or from previous step
+            // Default to "Newbie" team for all new members
+            // Option 1: Use DEFAULT_TEAM_ID (numeric team ID) - preferred
+            const teamIdFromSecret = '${{ secrets.DEFAULT_TEAM_ID }}';
+            // Option 2: Use team ID from lookup (if DEFAULT_TEAM_NAME was provided)
+            const teamIdFromLookup = '${{ steps.get_team_id.outputs.team_id }}';
+            // Option 3: Try to find "Newbie" team automatically
+            let newbieTeamId = '';
+            
+            // Prefer explicit team ID, fallback to looked-up ID, or try to find Newbie team
+            let teamIdStr = teamIdFromSecret && teamIdFromSecret !== '' ? teamIdFromSecret : (teamIdFromLookup || '');
+            
+            // If no team specified, try to find "Newbie" team
+            if (!teamIdStr || teamIdStr === '' || teamIdStr === 'null' || teamIdStr === 'undefined') {
+              try {
+                const teams = await github.paginate(github.rest.teams.list, {
+                  org: orgName
+                });
+                const newbieTeam = teams.find(t => 
+                  t.name.toLowerCase() === 'newbie' || t.slug.toLowerCase() === 'newbie'
+                );
+                if (newbieTeam) {
+                  newbieTeamId = newbieTeam.id.toString();
+                  teamIdStr = newbieTeamId;
+                  console.log(`Auto-found Newbie team: ${newbieTeam.name} (ID: ${newbieTeam.id})`);
+                }
+              } catch (error) {
+                console.log(`Could not auto-find Newbie team: ${error.message}`);
+              }
+            }
+            
+            const teamIds = teamIdStr && teamIdStr !== '' && teamIdStr !== 'null' && teamIdStr !== 'undefined' ? [parseInt(teamIdStr)] : [];
+            
             console.log(`Inviting ${username} to ${orgName}...`);
+            if (teamIds.length > 0) {
+              console.log(`Will add to team ID: ${teamIds[0]} (Newbie team)`);
+            } else {
+              console.log(`Warning: No team specified - user will be added as direct member. Please set DEFAULT_TEAM_ID or DEFAULT_TEAM_NAME secret.`);
+            }
             
             try {
               // Get user ID first (required for invitation)
@@ -66,15 +136,17 @@ jobs:
               
               console.log(`Found user ${username} with ID ${user.data.id}`);
               
-           
+              // Create invitation with optional team assignment
               const inviteResponse = await github.rest.orgs.createInvitation({
                 org: orgName,
                 invitee_id: user.data.id,
-                role: 'direct_member'
+                role: 'direct_member',
+                team_ids: teamIds  // Add to team if team ID is provided
               });
               
-              console.log(`Successfully invited ${username} to ${orgName}`);
-              return { success: true, message: `Invitation sent to ${username}` };
+              const teamMsg = teamIds.length > 0 ? ` and added to team` : '';
+              console.log(`Successfully invited ${username} to ${orgName}${teamMsg}`);
+              return { success: true, message: `Invitation sent to ${username}${teamMsg}` };
               
             } catch (error) {
               console.error(`Error inviting ${username}:`, error.message);
@@ -111,10 +183,25 @@ jobs:
             
             Your invitation to join **Cloud Native Security Pakistan (CNSP)** has been sent! 
             
+            You've been automatically added to the **Newbie** team. Once you add yourself to the member map, you'll be promoted to the **Member** team with access to more resources!
+            
             ### Next Steps:
             1. **Check your email** - You should receive an invitation email from GitHub
             2. **Accept the invitation** - Click the link in the email or check your [GitHub notifications](https://github.com/notifications)
-            3. **Join our community** - Connect with us on our social platforms below!
+            3. **Become a Member** - Choose one method:
+               
+               **Option A: GitHub PR Method (Recommended - Earn Extra Points! ⭐)**
+               - Create a file \`${username}.md\` (or \`${username}.json\`) in the \`/membersmap\` directory
+               - Include your name, location, interests, and GitHub profile
+               - Submit a Pull Request to add yourself to the community map
+               - **Bonus**: You'll earn extra points for submitting via PR!
+               
+               **Option B: Google Form Method**
+               - Fill out the [CNSP Member Registration Form](YOUR_GOOGLE_FORM_LINK)
+               - Your information will be added to our database and appear on the website map
+               
+               Both methods require admin approval. Once approved, you'll be promoted to the **Member** team!
+            4. **Join our community** - Connect with us on our social platforms below!
                         
             ### Join Our Community
             
