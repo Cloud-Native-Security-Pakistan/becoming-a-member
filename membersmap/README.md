@@ -2,6 +2,8 @@
 
 This directory contains member profiles for Cloud Native Security Pakistan (CNSP). 
 
+The member map visualization uses [OpenStreetMap](https://www.openstreetmap.org/) - an open source mapping platform that aligns with our open source values.
+
 ## How to Add Yourself
 
 ### Option 1: GitHub PR Method (Recommended - Earn Extra Points! ⭐)
@@ -101,9 +103,11 @@ You can add more sections here as needed.
 ## Finding Your Coordinates
 
 You can find your city's coordinates using:
-- [Google Maps](https://www.google.com/maps) - Right-click on your location and copy coordinates
+- [OpenStreetMap](https://www.openstreetmap.org/) - Click on your location and copy coordinates from the URL or use the search feature
 - [LatLong.net](https://www.latlong.net/)
-- [OpenStreetMap](https://www.openstreetmap.org/)
+- [Google Maps](https://www.google.com/maps) - Right-click on your location and copy coordinates
+
+**Recommended**: Use OpenStreetMap as it's open source and aligns with our open source values.
 
 ## Example: Lahore, Pakistan
 
