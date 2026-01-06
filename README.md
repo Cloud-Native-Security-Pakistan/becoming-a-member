@@ -212,39 +212,6 @@ As a CNSP member, you'll enjoy:
 - [Twitter/X](https://twitter.com/cnspk) - Stay updated with the latest news
 - [GitHub Organization](https://github.com/Cloud-Native-Security-Pakistan) - Explore our projects and repositories
 
-## 🛠️ Technical Details
-
-### Required Secrets
-
-For the workflows to function, the following secrets must be configured:
-
-- **`ORG_INVITE_TOKEN`**: GitHub Personal Access Token with `admin:org` scope
-  - Used for inviting users and managing team memberships
-  - Can be set at organization or repository level
-
-- **`DEFAULT_TEAM_ID`** (Optional): Numeric ID of the "Newbie" team
-  - If not set, users will be direct members (not recommended)
-  - Get team ID from: `https://api.github.com/orgs/Cloud-Native-Security-Pakistan/teams`
-
-- **`DEFAULT_TEAM_NAME`** (Alternative): Name of the "Newbie" team (e.g., "Newbie")
-  - Workflow will automatically look up the team ID
-  - Less reliable than using team ID directly
-
-### Workflow Files
-
-- **`.github/workflows/invite.yml`**: Handles automatic invitations and team assignment
-- **`.github/ISSUE_TEMPLATE/invite.yml`**: Issue template for membership requests
-- **`.github/dependabot.yml`**: Keeps GitHub Actions dependencies updated
-
-### Team Configuration
-
-Teams should be created in the organization with the following names:
-- `Newbie` (or `newbie`) - Entry level team (automatic on join)
-- `Member` (or `member`) - After completing registration form and map
-- `Contributor` (or `contributor`) - First contribution level
-- `Advanced Contributor` (or `advanced-contributor`) - Second promotion level
-- `Mentor/Admin` (or `mentor-admin`) - Highest level (admin-managed)
-
 ## 📝 Contributing
 
 We welcome contributions! Whether it's:
