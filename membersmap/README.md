@@ -22,7 +22,7 @@ Fill out the [CNSP Member Registration Form](YOUR_GOOGLE_FORM_LINK) and your inf
 
 ### Markdown Format with YAML Frontmatter (`.md`) - Recommended
 
-This format is machine-readable and follows best practices used by organizations like GitHub Campus Experts:
+
 
 ```markdown
 ---
@@ -64,7 +64,7 @@ You can add more sections here as needed.
 - Machine-readable for automated processing
 - Easy to parse for website map generation
 - Follows industry best practices
-- Used by GitHub Campus Experts and similar organizations
+- Structured format for easy database integration
 
 ### JSON Format (`.json`)
 
