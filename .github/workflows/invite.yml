@@ -38,7 +38,7 @@ jobs:
 
       - name: Invite User to Organization
         id: invite_user
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -88,7 +88,7 @@ jobs:
             }
 
       - name: Post Welcome Comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Close Issue
         if: steps.invite_user.outcome == 'success'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
