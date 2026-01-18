@@ -48,7 +48,7 @@ jobs:
 
       - name: Get Team ID (if team name is provided)
         id: get_team_id
-        if: steps.extract_username.outcome == 'success' && secrets.DEFAULT_TEAM_NAME != ''
+        if: steps.extract_username.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
