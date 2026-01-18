@@ -183,39 +183,21 @@ jobs:
             
             Your invitation to join **Cloud Native Security Pakistan (CNSP)** has been sent! 
             
-            You've been automatically added to the **Newbie** team. Once you add yourself to the member map, you'll be promoted to the **Member** team with access to more resources!
+            You've been automatically added to the **Newbie** team. Complete the next step to unlock **Member** status!
             
-            ### Next Steps:
-            1. **Check your email** - You should receive an invitation email from GitHub
-            2. **Accept the invitation** - Click the link in the email or check your [GitHub notifications](https://github.com/notifications)
-            3. **Become a Member** - Choose one method:
-               
-               **Option A: GitHub PR Method (Recommended - Earn Extra Points! ⭐)**
-               - Create a file \`${username}.md\` (or \`${username}.json\`) in the \`/membersmap\` directory
-               - Include your name, location, interests, and GitHub profile
-               - Submit a Pull Request to add yourself to the community map
-               - **Bonus**: You'll earn extra points for submitting via PR!
-               
-               **Option B: Google Form Method**
-               - Fill out the [CNSP Member Registration Form](YOUR_GOOGLE_FORM_LINK)
-               - Your information will be added to our database and appear on the website map
-               
-               Both methods require admin approval. Once approved, you'll be promoted to the **Member** team!
-            4. **Join our community** - Connect with us on our social platforms below!
-                        
-            ### Join Our Community
+            ### ✅ Next Steps:
+            1. **Check your email** — Accept the GitHub invitation (or check [notifications](https://github.com/notifications))
+            2. **Add yourself to the Member Map** — Create \`${username}.md\` in the \`/membersmap\` directory with your profile info
+            3. **Submit a Pull Request** — Once merged, you're automatically promoted to **Member**! 🎉
             
-            🎯 **CNCF Bevy Chapter**: [Join our CNCF Community](https://community.cncf.io/cloud-native-security-pakistan/) - Connect with 257+ members, attend events, and participate in discussions
-            
-            📱 **WhatsApp Community**: [Join our WhatsApp Community](https://chat.whatsapp.com/F5Hf1ZwI22TK6EcV6zz4wo) - Connect with members, get updates, and participate in discussions
-            
-            🌐 **Social Media**:
-            - [LinkedIn](https://www.linkedin.com/company/cloud-native-security-pakistan) - Follow us for updates and announcements
-            - [Twitter/X](https://twitter.com/cnspk) - Stay updated with the latest news
-            - [GitHub Organization](https://github.com/Cloud-Native-Security-Pakistan) - Explore our projects and repositories
+            ### 🔗 Connect With Us
+            - 🎯 [CNCF Bevy Chapter](https://community.cncf.io/cloud-native-security-pakistan/) — 257+ members
+            - 📱 [WhatsApp Community](https://chat.whatsapp.com/F5Hf1ZwI22TK6EcV6zz4wo)
+            - 💼 [LinkedIn](https://www.linkedin.com/company/cloud-native-security-pakistan)
+            - 🐦 [Twitter/X](https://twitter.com/cnspk)
             
             ### Need Help?
-            If you don't receive the invitation within a few minutes, please let us know by commenting on this issue.
+            Comment on this issue if you don't receive the invitation within a few minutes.
             
             Welcome aboard! 🚀
             `;
@@ -243,14 +225,19 @@ jobs:
             
             Please check that you provided a valid GitHub username and try again, or contact an administrator.
             
-            If this issue persists, please take one admin;
+            If this issue persists, please tag one of the admins.`;
             
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: errorMsg
-            });
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: errorMsg
+              });
+              console.log('Posted error comment');
+            } catch (err) {
+              console.error('Failed to post error comment:', err.message);
+            }
 
       - name: Close Issue
         if: steps.invite_user.outcome == 'success'
