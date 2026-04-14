@@ -24,7 +24,7 @@ jobs:
 
       - name: Check if file was added to membersmap
         id: check_membersmap
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -61,7 +61,7 @@ jobs:
       - name: Get User's Current Teams
         id: get_current_teams
         if: steps.check_membersmap.outputs.membersmap_file == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -109,7 +109,7 @@ jobs:
       - name: Get Team IDs
         id: get_team_ids
         if: steps.check_membersmap.outputs.membersmap_file == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -151,7 +151,7 @@ jobs:
         if: |
           steps.check_membersmap.outputs.membersmap_file == 'true' &&
           steps.get_team_ids.outputs.member_team_id != ''
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -202,7 +202,7 @@ jobs:
 
       - name: Post Congratulations Comment
         if: steps.promote_user.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
