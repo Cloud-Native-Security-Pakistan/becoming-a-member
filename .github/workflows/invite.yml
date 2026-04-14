@@ -49,7 +49,7 @@ jobs:
       - name: Get Team ID (if team name is provided)
         id: get_team_id
         if: steps.extract_username.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -81,7 +81,7 @@ jobs:
       - name: Invite User to Organization
         id: invite_user
         if: steps.extract_username.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
@@ -171,7 +171,7 @@ jobs:
 
       - name: Post Welcome Comment
         if: steps.invite_user.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -213,7 +213,7 @@ jobs:
 
       - name: Post Error Comment
         if: failure()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -241,7 +241,7 @@ jobs:
 
       - name: Close Issue
         if: steps.invite_user.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
