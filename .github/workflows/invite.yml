@@ -2,254 +2,370 @@ name: Auto Invite to Organization
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Existing invite-request issue to retry
+        required: true
+        type: number
+
+concurrency:
+  group: invite-request-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
 
 jobs:
   invite:
-    # Only run if the issue has the invite-request label (added by the template)
-    if: contains(github.event.issue.labels.*.name, 'invite-request')
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.issue.labels.*.name, 'invite-request')
     runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:
-
-      - name: Extract GitHub Username
-        id: extract_username
-        run: |
-          # Extract username from issue body
-          # The template format is: "### GitHub Username\n\nusername"
-          BODY="${{ github.event.issue.body }}"
-          
-          # Pattern 1: Look for username after "### GitHub Username" heading (most common)
-          USERNAME=$(echo "$BODY" | grep -A 2 "### GitHub Username" | grep -v "### GitHub Username" | grep -v "^$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-          
-          # Pattern 2: Look for username after "GitHub Username" (any format)
-          if [ -z "$USERNAME" ]; then
-            USERNAME=$(echo "$BODY" | grep -A 2 "GitHub Username" | grep -v "GitHub Username" | grep -v "^$" | head -1 | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-          fi
-          
-          # Pattern 3: Try to find github_username field (YAML format)
-          if [ -z "$USERNAME" ]; then
-            USERNAME=$(echo "$BODY" | grep -i "github_username" | sed 's/.*github_username[^:]*:\s*//i' | sed 's/[[:space:]]*$//' | head -1)
-          fi
-          
-          # Clean up username (remove any markdown, quotes, or extra characters, but keep alphanumeric and hyphens)
-          USERNAME=$(echo "$USERNAME" | sed 's/[^a-zA-Z0-9-]//g' | head -1)
-          
-          echo "username=$USERNAME" >> $GITHUB_OUTPUT
-          echo "Extracted username: $USERNAME"
-          
-          if [ -z "$USERNAME" ]; then
-            echo "Error: Could not extract username from issue body"
-            echo "Issue body preview:"
-            echo "$BODY" | head -20
-            exit 1
-          fi
-
-      - name: Get Team ID (if team name is provided)
-        id: get_team_id
-        if: steps.extract_username.outcome == 'success'
+      - name: Load Invitation Request
+        id: load_request
         uses: actions/github-script@v8
+        env:
+          RETRY_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let issue = context.payload.issue;
+
+            if (context.eventName === 'workflow_dispatch') {
+              const issueNumber = Number(process.env.RETRY_ISSUE_NUMBER);
+              if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+                throw new Error('A valid invite-request issue number is required.');
+              }
+
+              const response = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              issue = response.data;
+            }
+
+            if (!issue || issue.pull_request) {
+              throw new Error('The requested item is not an issue.');
+            }
+
+            core.setOutput('issue_number', issue.number.toString());
+
+            const labels = issue.labels.map(label =>
+              typeof label === 'string' ? label : label.name
+            );
+            if (!labels.includes('invite-request')) {
+              throw new Error(`Issue #${issue.number} does not have the invite-request label.`);
+            }
+
+            const lines = (issue.body || '').split(/\r?\n/);
+            const headingIndex = lines.findIndex(line =>
+              line.trim().toLowerCase() === '### github username'
+            );
+            const rawUsername = headingIndex >= 0
+              ? lines.slice(headingIndex + 1).find(line => line.trim() !== '')
+              : undefined;
+            const username = (rawUsername || '').trim().replace(/^@/, '');
+
+            // GitHub usernames are 1-39 alphanumeric/hyphen characters and
+            // cannot begin or end with a hyphen.
+            const validUsername = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
+            if (!validUsername.test(username)) {
+              throw new Error(`Issue #${issue.number} does not contain a valid GitHub username.`);
+            }
+
+            core.setOutput('username', username);
+            core.setOutput('request_validated', 'true');
+            console.log(`Loaded invite request #${issue.number} for ${username}`);
+
+      - name: Get Configured Team ID
+        id: get_team_id
+        uses: actions/github-script@v8
+        env:
+          DEFAULT_TEAM_NAME: ${{ secrets.DEFAULT_TEAM_NAME }}
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
             const orgName = 'Cloud-Native-Security-Pakistan';
-            const teamName = '${{ secrets.DEFAULT_TEAM_NAME }}';
-            
+            const teamName = (process.env.DEFAULT_TEAM_NAME || '').trim();
+
+            if (!teamName) {
+              console.log('DEFAULT_TEAM_NAME is not set; the invite step will look for the Newbie team.');
+              core.setOutput('team_id', '');
+              return;
+            }
+
             try {
-              // Get all teams in the organization
               const teams = await github.paginate(github.rest.teams.list, {
                 org: orgName
               });
-              
-              // Find team by name (case-insensitive)
-              const team = teams.find(t => t.name.toLowerCase() === teamName.toLowerCase() || t.slug.toLowerCase() === teamName.toLowerCase());
-              
+              const normalizedTeamName = teamName.toLowerCase();
+              const team = teams.find(candidate =>
+                candidate.name.toLowerCase() === normalizedTeamName ||
+                candidate.slug.toLowerCase() === normalizedTeamName
+              );
+
               if (team) {
-                console.log(`Found team "${teamName}" with ID: ${team.id}`);
+                console.log(`Found team "${teamName}" with ID ${team.id}`);
                 core.setOutput('team_id', team.id.toString());
               } else {
-                console.log(`Team "${teamName}" not found. Available teams: ${teams.map(t => t.name).join(', ')}`);
+                console.log(`Configured team "${teamName}" was not found; falling back to Newbie.`);
                 core.setOutput('team_id', '');
               }
             } catch (error) {
-              console.log(`Could not fetch teams: ${error.message}`);
+              console.log(`Could not fetch configured team: ${error.message}`);
               core.setOutput('team_id', '');
             }
 
       - name: Invite User to Organization
         id: invite_user
-        if: steps.extract_username.outcome == 'success'
         uses: actions/github-script@v8
+        env:
+          INVITE_USERNAME: ${{ steps.load_request.outputs.username }}
+          DEFAULT_TEAM_ID: ${{ secrets.DEFAULT_TEAM_ID }}
+          LOOKED_UP_TEAM_ID: ${{ steps.get_team_id.outputs.team_id }}
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
-            const username = '${{ steps.extract_username.outputs.username }}';
+            const username = process.env.INVITE_USERNAME;
             const orgName = 'Cloud-Native-Security-Pakistan';
-            
-            // Get team ID from secret or from previous step
-            // Default to "Newbie" team for all new members
-            // Option 1: Use DEFAULT_TEAM_ID (numeric team ID) - preferred
-            const teamIdFromSecret = '${{ secrets.DEFAULT_TEAM_ID }}';
-            // Option 2: Use team ID from lookup (if DEFAULT_TEAM_NAME was provided)
-            const teamIdFromLookup = '${{ steps.get_team_id.outputs.team_id }}';
-            // Option 3: Try to find "Newbie" team automatically
-            let newbieTeamId = '';
-            
-            // Prefer explicit team ID, fallback to looked-up ID, or try to find Newbie team
-            let teamIdStr = teamIdFromSecret && teamIdFromSecret !== '' ? teamIdFromSecret : (teamIdFromLookup || '');
-            
-            // If no team specified, try to find "Newbie" team
-            if (!teamIdStr || teamIdStr === '' || teamIdStr === 'null' || teamIdStr === 'undefined') {
+            let teamIdValue = (process.env.DEFAULT_TEAM_ID || '').trim() ||
+              (process.env.LOOKED_UP_TEAM_ID || '').trim();
+
+            if (!teamIdValue) {
               try {
                 const teams = await github.paginate(github.rest.teams.list, {
                   org: orgName
                 });
-                const newbieTeam = teams.find(t => 
-                  t.name.toLowerCase() === 'newbie' || t.slug.toLowerCase() === 'newbie'
+                const newbieTeam = teams.find(team =>
+                  team.name.toLowerCase() === 'newbie' ||
+                  team.slug.toLowerCase() === 'newbie'
                 );
                 if (newbieTeam) {
-                  newbieTeamId = newbieTeam.id.toString();
-                  teamIdStr = newbieTeamId;
-                  console.log(`Auto-found Newbie team: ${newbieTeam.name} (ID: ${newbieTeam.id})`);
+                  teamIdValue = newbieTeam.id.toString();
+                  console.log(`Found Newbie team with ID ${newbieTeam.id}`);
                 }
               } catch (error) {
-                console.log(`Could not auto-find Newbie team: ${error.message}`);
+                console.log(`Could not find the Newbie team: ${error.message}`);
               }
             }
-            
-            const teamIds = teamIdStr && teamIdStr !== '' && teamIdStr !== 'null' && teamIdStr !== 'undefined' ? [parseInt(teamIdStr)] : [];
-            
-            console.log(`Inviting ${username} to ${orgName}...`);
-            if (teamIds.length > 0) {
-              console.log(`Will add to team ID: ${teamIds[0]} (Newbie team)`);
-            } else {
-              console.log(`Warning: No team specified - user will be added as direct member. Please set DEFAULT_TEAM_ID or DEFAULT_TEAM_NAME secret.`);
+
+            const teamIds = [];
+            if (teamIdValue) {
+              const teamId = Number(teamIdValue);
+              if (!Number.isSafeInteger(teamId) || teamId <= 0) {
+                throw new Error('DEFAULT_TEAM_ID must be a positive numeric GitHub team ID.');
+              }
+              teamIds.push(teamId);
             }
-            
+
+            core.setOutput('team_assigned', teamIds.length > 0 ? 'true' : 'false');
+            console.log(`Inviting ${username} to ${orgName}`);
+
             try {
-              // Get user ID first (required for invitation)
-              const user = await github.rest.users.getByUsername({
-                username: username
-              });
-              
-              console.log(`Found user ${username} with ID ${user.data.id}`);
-              
-              // Create invitation with optional team assignment
-              const inviteResponse = await github.rest.orgs.createInvitation({
+              const user = await github.rest.users.getByUsername({ username });
+
+              try {
+                const membership = await github.request(
+                  'GET /orgs/{org}/memberships/{username}',
+                  { org: orgName, username }
+                );
+                if (membership.data.state === 'active') {
+                  core.setOutput('result', 'already_member');
+                  console.log(`${username} is already an organization member`);
+                  return;
+                }
+                if (membership.data.state === 'pending') {
+                  core.setOutput('result', 'already_invited');
+                  console.log(`${username} already has a pending invitation`);
+                  return;
+                }
+              } catch (membershipError) {
+                if (membershipError.status !== 404) {
+                  throw membershipError;
+                }
+              }
+
+              await github.rest.orgs.createInvitation({
                 org: orgName,
                 invitee_id: user.data.id,
                 role: 'direct_member',
-                team_ids: teamIds  // Add to team if team ID is provided
+                team_ids: teamIds
               });
-              
-              const teamMsg = teamIds.length > 0 ? ` and added to team` : '';
-              console.log(`Successfully invited ${username} to ${orgName}${teamMsg}`);
-              return { success: true, message: `Invitation sent to ${username}${teamMsg}` };
-              
+
+              core.setOutput('result', 'invited');
+              console.log(`Invitation sent to ${username}`);
             } catch (error) {
-              console.error(`Error inviting ${username}:`, error.message);
-              
-              // Check if user is already a member
-              if (error.status === 422 && (error.message.includes('already a member') || error.message.includes('User is already a member'))) {
-                return { success: true, message: `${username} is already a member` };
+              const message = String(error.message || '').toLowerCase();
+              console.error(`Error inviting ${username}: ${error.message}`);
+
+              if (
+                error.status === 422 &&
+                message.includes('already') &&
+                (message.includes('member') || message.includes('part of'))
+              ) {
+                core.setOutput('result', 'already_member');
+                console.log(`${username} is already an organization member`);
+                return;
               }
-              
-              // Check if invitation already exists
-              if (error.status === 422 && (error.message.includes('invitation already exists') || error.message.includes('Invitation already exists'))) {
-                return { success: true, message: `Invitation already sent to ${username}` };
+
+              if (
+                error.status === 422 &&
+                message.includes('already') &&
+                (message.includes('invite') || message.includes('invitation'))
+              ) {
+                core.setOutput('result', 'already_invited');
+                console.log(`${username} already has a pending invitation`);
+                return;
               }
-              
-              // Check for permission errors
+
               if (error.status === 403) {
-                throw new Error(`Permission denied: Token needs 'admin:org' scope. Current token has: ${error.response?.headers['x-oauth-scopes'] || 'unknown'}. Please update your ORG_INVITE_TOKEN with a token that has 'admin:org' permission.`);
+                throw new Error(
+                  "Permission denied: ORG_INVITE_TOKEN must be authorized to manage organization invitations and teams."
+                );
               }
-              
+
               throw error;
             }
 
       - name: Post Welcome Comment
         if: steps.invite_user.outcome == 'success'
         uses: actions/github-script@v8
+        env:
+          INVITE_USERNAME: ${{ steps.load_request.outputs.username }}
+          ISSUE_NUMBER: ${{ steps.load_request.outputs.issue_number }}
+          INVITE_RESULT: ${{ steps.invite_user.outputs.result }}
+          TEAM_ASSIGNED: ${{ steps.invite_user.outputs.team_assigned }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const username = '${{ steps.extract_username.outputs.username }}';
-            const issueNumber = context.payload.issue.number;
-            const issueAuthor = context.payload.issue.user.login;
-            
+            const username = process.env.INVITE_USERNAME;
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const result = process.env.INVITE_RESULT;
+            const teamAssigned = process.env.TEAM_ASSIGNED === 'true';
+
+            const statusMessage = result === 'already_member'
+              ? 'You are already a member of **Cloud Native Security Pakistan (CNSP)**.'
+              : result === 'already_invited'
+                ? 'Your invitation to **Cloud Native Security Pakistan (CNSP)** is already pending.'
+                : 'Your invitation to join **Cloud Native Security Pakistan (CNSP)** has been sent!';
+            const teamMessage = teamAssigned && result !== 'already_member'
+              ? '\n\nThe invitation includes access to the **Newbie** team.'
+              : '';
+
             const comment = `## 🎉 Welcome to CNSP, @${username}!
-            
-            Your invitation to join **Cloud Native Security Pakistan (CNSP)** has been sent! 
-            
-            You've been automatically added to the **Newbie** team. Complete the next step to unlock **Member** status!
-            
+
+            ${statusMessage}${teamMessage}
+
             ### ✅ Next Steps:
             1. **Check your email** — Accept the GitHub invitation (or check [notifications](https://github.com/notifications))
             2. **Add yourself to the Member Map** — Create \`${username}.md\` in the \`/membersmap\` directory with your profile info
             3. **Submit a Pull Request** — Once merged, you're automatically promoted to **Member**! 🎉
-            
+
             ### 🔗 Connect With Us
-            - 🎯 [CNCF Bevy Chapter](https://community.cncf.io/cloud-native-security-pakistan/) — 257+ members
+            - 🎯 [CNCF Bevy Chapter](https://community.cncf.io/cloud-native-security-pakistan/)
             - 📱 [WhatsApp Community](https://chat.whatsapp.com/F5Hf1ZwI22TK6EcV6zz4wo)
             - 💼 [LinkedIn](https://www.linkedin.com/company/cloud-native-security-pakistan)
             - 🐦 [Twitter/X](https://twitter.com/cnspk)
-            
-            ### Need Help?
-            Comment on this issue if you don't receive the invitation within a few minutes.
-            
+
+            If you do not receive the invitation within a few minutes, comment on this issue and tag an administrator.
+
             Welcome aboard! 🚀
-            `;
-            
-            await github.rest.issues.createComment({
+
+            <!-- cnsp-invite-status -->`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: comment
+              issue_number: issueNumber
             });
-            
-            console.log(`Posted welcome comment on issue #${issueNumber}`);
+            const existingComment = comments.find(candidate =>
+              candidate.user.type === 'Bot' &&
+              (
+                candidate.body?.includes('<!-- cnsp-invite-status -->') ||
+                candidate.body?.includes('There was an error processing your invitation request')
+              )
+            );
 
-      - name: Post Error Comment
-        if: failure()
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const errorMsg = `❌ There was an error processing your invitation request.
-            
-            **Possible issues:**
-            - Invalid or missing GitHub username
-            - User account doesn't exist
-            
-            Please check that you provided a valid GitHub username and try again, or contact an administrator.
-            
-            If this issue persists, please tag one of the admins.`;
-            
-            try {
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.payload.issue.number,
-                body: errorMsg
+                issue_number: issueNumber,
+                body: comment
               });
-              console.log('Posted error comment');
-            } catch (err) {
-              console.error('Failed to post error comment:', err.message);
+            }
+
+      - name: Post Error Comment
+        if: failure() && steps.load_request.outputs.request_validated == 'true'
+        uses: actions/github-script@v8
+        env:
+          ISSUE_NUMBER: ${{ steps.load_request.outputs.issue_number }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const errorMessage = `❌ The automated invitation failed before it could be confirmed.
+
+            An administrator should review the [workflow run](${runUrl}) for the exact error and retry this issue after correcting it.
+
+            <!-- cnsp-invite-status -->`;
+
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+              const existingComment = comments.find(candidate =>
+                candidate.user.type === 'Bot' &&
+                (
+                  candidate.body?.includes('<!-- cnsp-invite-status -->') ||
+                  candidate.body?.includes('There was an error processing your invitation request')
+                )
+              );
+
+              if (existingComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: errorMessage
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: errorMessage
+                });
+              }
+            } catch (error) {
+              console.error(`Failed to post error comment: ${error.message}`);
             }
 
       - name: Close Issue
         if: steps.invite_user.outcome == 'success'
         uses: actions/github-script@v8
+        env:
+          ISSUE_NUMBER: ${{ steps.load_request.outputs.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              state: 'closed'
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              state: 'closed',
+              state_reason: 'completed'
             });
-            
-            console.log(`Closed issue #${context.payload.issue.number}`);
-

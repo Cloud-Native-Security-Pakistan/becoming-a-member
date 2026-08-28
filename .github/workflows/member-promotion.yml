@@ -5,115 +5,81 @@ on:
     types: [closed]
     paths:
       - 'membersmap/**'
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Merged member-map pull request to retry
+        required: true
+        type: number
 
 jobs:
   promote-to-member:
-    # Only run if PR was merged (not just closed)
-    if: github.event.pull_request.merged == true
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      pull-requests: write
       contents: read
     steps:
-      - name: Get PR Author
-        id: get_author
-        run: |
-          AUTHOR="${{ github.event.pull_request.user.login }}"
-          echo "author=$AUTHOR" >> $GITHUB_OUTPUT
-          echo "PR author: $AUTHOR"
-
-      - name: Check if file was added to membersmap
-        id: check_membersmap
+      - name: Load and Validate Member Map PR
+        id: load_pr
         uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pull_request_number || github.event.pull_request.number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const core = require('@actions/core');
-            const prNumber = context.payload.pull_request.number;
-            
-            try {
-              // Get files changed in the PR
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber
-              });
-              
-              // Check if any file in membersmap/ was added
-              const membersmapFile = files.find(file => 
-                file.status === 'added' && 
-                file.filename.startsWith('membersmap/') &&
-                (file.filename.endsWith('.md') || file.filename.endsWith('.json'))
-              );
-              
-              if (membersmapFile) {
-                console.log(`Found membersmap file: ${membersmapFile.filename}`);
-                core.setOutput('membersmap_file', 'true');
-              } else {
-                console.log('No membersmap file found in PR');
-                core.setOutput('membersmap_file', 'false');
-              }
-            } catch (error) {
-              console.error(`Error checking files: ${error.message}`);
-              core.setOutput('membersmap_file', 'false');
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isSafeInteger(prNumber) || prNumber <= 0) {
+              throw new Error('A valid merged pull request number is required.');
             }
 
-      - name: Get User's Current Teams
-        id: get_current_teams
-        if: steps.check_membersmap.outputs.membersmap_file == 'true'
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.ORG_INVITE_TOKEN }}
-          script: |
-            const orgName = 'Cloud-Native-Security-Pakistan';
-            const username = '${{ steps.get_author.outputs.author }}';
-            
-            try {
-              // Get all teams in the organization
-              const teams = await github.paginate(github.rest.teams.list, {
-                org: orgName
-              });
-              
-              // Get user's teams
-              const userTeams = [];
-              for (const team of teams) {
-                try {
-                  const membership = await github.rest.teams.getMembershipForUserInOrg({
-                    org: orgName,
-                    team_slug: team.slug,
-                    username: username
-                  });
-                  if (membership.data.state === 'active') {
-                    userTeams.push({ id: team.id, name: team.name, slug: team.slug });
-                  }
-                } catch (error) {
-                  // User is not in this team, continue
-                }
-              }
-              
-              console.log(`User ${username} is in teams: ${userTeams.map(t => t.name).join(', ')}`);
-              
-              // Check if user is in Newbie team
-              const newbieTeam = userTeams.find(t => t.name.toLowerCase() === 'newbie' || t.slug.toLowerCase() === 'newbie');
-              
-              return {
-                isNewbie: !!newbieTeam,
-                currentTeams: userTeams,
-                newbieTeamId: newbieTeam?.id
-              };
-            } catch (error) {
-              console.error(`Error getting user teams: ${error.message}`);
-              return { isNewbie: false, currentTeams: [], newbieTeamId: null };
+            const pullRequest = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            if (!pullRequest.data.merged_at) {
+              throw new Error(`Pull request #${prNumber} has not been merged.`);
             }
+
+            const username = pullRequest.data.user.login;
+            const validUsername = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
+            if (!validUsername.test(username)) {
+              throw new Error(`Pull request #${prNumber} has an invalid author username.`);
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            const expectedProfiles = [
+              `membersmap/${username}.md`.toLowerCase(),
+              `membersmap/${username}.json`.toLowerCase()
+            ];
+            const memberProfile = files.find(file =>
+              file.status === 'added' &&
+              expectedProfiles.includes(file.filename.toLowerCase())
+            );
+            if (!memberProfile) {
+              throw new Error(
+                `Pull request #${prNumber} did not add a member profile for its author, ${username}.`
+              );
+            }
+
+            core.setOutput('author', username);
+            core.setOutput('pull_request_number', prNumber.toString());
+            console.log(`Validated ${memberProfile.filename} from merged PR #${prNumber}`);
 
       - name: Get Team IDs
         id: get_team_ids
-        if: steps.check_membersmap.outputs.membersmap_file == 'true'
+        if: steps.load_pr.outcome == 'success'
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
-            const core = require('@actions/core');
             const orgName = 'Cloud-Native-Security-Pakistan';
             
             try {
@@ -139,26 +105,29 @@ jobs:
                 core.setOutput('member_team_id', memberTeam.id.toString());
                 console.log(`Found Member team: ${memberTeam.name} (ID: ${memberTeam.id})`);
               } else {
-                console.log('Member team not found!');
+                throw new Error('Member team not found.');
               }
               
             } catch (error) {
               console.error(`Error getting teams: ${error.message}`);
+              throw error;
             }
 
       - name: Promote User to Member Team
         id: promote_user
         if: |
-          steps.check_membersmap.outputs.membersmap_file == 'true' &&
+          steps.load_pr.outcome == 'success' &&
           steps.get_team_ids.outputs.member_team_id != ''
         uses: actions/github-script@v8
+        env:
+          PROMOTION_USERNAME: ${{ steps.load_pr.outputs.author }}
+          NEWBIE_TEAM_ID: ${{ steps.get_team_ids.outputs.newbie_team_id }}
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
             const orgName = 'Cloud-Native-Security-Pakistan';
-            const username = '${{ steps.get_author.outputs.author }}';
-            const memberTeamId = parseInt('${{ steps.get_team_ids.outputs.member_team_id }}');
-            const newbieTeamId = '${{ steps.get_team_ids.outputs.newbie_team_id }}';
+            const username = process.env.PROMOTION_USERNAME;
+            const newbieTeamId = process.env.NEWBIE_TEAM_ID;
             
             console.log(`Promoting ${username} to Member team...`);
             
@@ -190,9 +159,9 @@ jobs:
               return { success: true };
             } catch (error) {
               console.error(`Error promoting user: ${error.message}`);
-              
-              // Check if user is already in Member team
-              if (error.status === 422 || error.message.includes('already a member')) {
+              const message = String(error.message || '').toLowerCase();
+
+              if (message.includes('already') && message.includes('member')) {
                 console.log(`User ${username} is already in Member team`);
                 return { success: true, alreadyMember: true };
               }
@@ -203,11 +172,14 @@ jobs:
       - name: Post Congratulations Comment
         if: steps.promote_user.outcome == 'success'
         uses: actions/github-script@v8
+        env:
+          PROMOTED_USERNAME: ${{ steps.load_pr.outputs.author }}
+          PR_NUMBER: ${{ steps.load_pr.outputs.pull_request_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const username = '${{ steps.get_author.outputs.author }}';
-            const prNumber = context.payload.pull_request.number;
+            const username = process.env.PROMOTED_USERNAME;
+            const prNumber = Number(process.env.PR_NUMBER);
             
             const comment = `## 🎉 Congratulations @${username}!
             
@@ -225,14 +197,34 @@ jobs:
             - Check out our [README](https://github.com/Cloud-Native-Security-Pakistan/become-a-member#-team-structure--progression) to see how to advance further
             
             Welcome to the Member team! 🚀
-            `;
-            
-            await github.rest.issues.createComment({
+
+            <!-- cnsp-promotion-status -->`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
-              body: comment
+              issue_number: prNumber
             });
-            
-            console.log(`Posted congratulations comment on PR #${prNumber}`);
+            const existingComment = comments.find(candidate =>
+              candidate.user.type === 'Bot' &&
+              candidate.body?.includes('<!-- cnsp-promotion-status -->')
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: comment
+              });
+            }
+
+            console.log(`Updated promotion status on PR #${prNumber}`);
 
