@@ -53,7 +53,6 @@ jobs:
         with:
           github-token: ${{ secrets.ORG_INVITE_TOKEN }}
           script: |
-            const core = require('@actions/core');
             const orgName = 'Cloud-Native-Security-Pakistan';
             const teamName = '${{ secrets.DEFAULT_TEAM_NAME }}';
             
