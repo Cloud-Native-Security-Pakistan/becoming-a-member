@@ -11,20 +11,21 @@ location:
     longitude: 74.3587
 social:
   github: https://github.com/ahmmikun
-  linkedin: ""
-  twitter: ""
+  linkedin: https://linkedin.com/in/ahmmikun
+  twitter: https://x.com/ahmmikun
 interests:
-  - Cloud-Native Security
-  - Web Development
-  - DevSecOps
-  - Open Source Security Tools
+  - Full Stack Web Development
+  - JavaScript, React & Node.js
+  - AI Engineering & AI/ML
+  - Cybersecurity & Information Security
 contribution_areas:
-  - Contributing to security labs and projects
-  - Writing documentation and best practices
+  - Web Development & Open Source
+  - AI/ML Projects & Hackathons
+  - Technical Events & Community
 ---
 
 # Member Profile: ahmmikun
 
 ## About Me
 
-Founder of CodeNoSekai and CEO of XLICON Botz. Passionate about Cloud-Native Security, DevSecOps, and Open Source Software.
+Computer Science student and aspiring Full Stack AI Engineer from Lahore, Pakistan. I build full-stack applications using JavaScript, React, Next.js, Node.js, Express, and MongoDB, while actively learning AI engineering, cybersecurity, APIs, and system design. I enjoy building practical projects, participating in hackathons, contributing to open-source communities, and exploring new technologies.
