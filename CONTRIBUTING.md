@@ -36,7 +36,7 @@ Your contributions unlock higher team levels:
 
 ## ❓ Questions?
 
-Open an [issue](https://github.com/Cloud-Native-Security-Pakistan/become-a-member/issues) or reach out on [WhatsApp](https://chat.whatsapp.com/F5Hf1ZwI22TK6EcV6zz4wo).
+Open an [issue](https://github.com/Cloud-Native-Security-Pakistan/becoming-a-member/issues) or reach out on [WhatsApp](https://chat.whatsapp.com/F5Hf1ZwI22TK6EcV6zz4wo).
 
 ---
 
