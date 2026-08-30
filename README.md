@@ -22,7 +22,7 @@ flowchart LR
     style E fill:#3b82f6,color:#fff
 ```
 
-1. **[Request Invitation →](https://github.com/Cloud-Native-Security-Pakistan/become-a-member/issues/new?template=invite.yml)** — Click and fill out one short form.
+1. **[Request Invitation →](https://github.com/Cloud-Native-Security-Pakistan/becoming-a-member/issues/new?template=invite.yml)** — Click and fill out one short form.
 2. **Accept the Email** — Check your inbox (or [GitHub notifications](https://github.com/notifications)) within seconds.
 3. **Add Yourself to the Map** — Submit a PR to `/membersmap` with your profile → automatic promotion to **Member**!
 
@@ -134,7 +134,7 @@ MIT — see [LICENSE](LICENSE).
 
 <p align="center">
   <strong>Ready to join?</strong><br/>
-  <a href="https://github.com/Cloud-Native-Security-Pakistan/become-a-member/issues/new?template=invite.yml">
+  <a href="https://github.com/Cloud-Native-Security-Pakistan/becoming-a-member/issues/new?template=invite.yml">
     <img src="https://img.shields.io/badge/🚀_Request_Invitation-10b981?style=for-the-badge" alt="Request Invitation"/>
   </a>
 </p>
