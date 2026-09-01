@@ -24,7 +24,7 @@ contribution_areas:
   - Productivity & E-Commerce Projects
 ---
 
-# Member Profile: Muhammad Zeeshan Amjad
+# Member Profile: zeeshanxbuilds
 
 ## About Me
 
